@@ -33,9 +33,15 @@ class RuleSet:
         '''Load rules from YAML file.'''
         with open(rule_file, 'r') as f:
             yaml_file = yaml.load(f)
-            for rule in yaml_file['ruleset']:
-                if isinstance(rule, dict):
-                    self.add_rule(rule)
+            includes = yaml_file.get('include')
+            if includes:
+                for i in includes:
+                    self.load_rules(i)
+            ruleset = yaml_file.get('ruleset')
+            if ruleset:
+                for rule in yaml_file['ruleset']:
+                    if isinstance(rule, dict):
+                        self.add_rule(rule)
 
     def add_rule(self, rule):
         '''Append rule to RuleSet.'''

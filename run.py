@@ -14,17 +14,33 @@ def main():
 
     config = load_config('test.conf')
     myrules = RuleSet()
-    myrules.load_rules('syntax.yml')
+    myrules.load_rules('main.yml')
     myresult = []
 
     for rule in myrules.rules:
         result = rule.apply(config)
+        print "*" * 80
+        print "*" * 80
+        print "*" * 80
+        print "Evaluation result for rule '{}':".format(rule.name)
         for element in result:
             if element.result == False:
-                print "Rule evaluation failed:\n Cfgline: '{}'\n Rule: {}".format(
-                    element.cfgline.text,
-                    element.rule)
+                print " Method: {}".format(element.rule.method)
+                print " Param: {}".format(element.param)
+                print " Condition: {}".format(element.condition)
+                cfglines = []
+                parent = None
+                for i in element.cfgline:
+                    cfglines.append(i.text)
+                    if i.parent != i:
+                        parent = i.parent.text
+                if parent:
+                    print " {}".format(parent)
+                for i in cfglines:
+                    print "  {}".format(i)
+                print "*" * 80
         myresult.append(result)
+        print " *** End of evaluation result ***"
     return myresult
 
 if __name__ == '__main__':

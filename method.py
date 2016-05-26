@@ -44,6 +44,13 @@ class StringMatch(MethodProvider):
 
     def __init__(self):
         MethodProvider.__init__(self)
+        self.mandatory = None
+        self.permitted = None
+        self.forbidden = None
+        self.only = None
+        self.evaluation = []
+        self.rule = None
+        self.config = None
 
     def __call__(self, rule, config):
         '''
@@ -54,29 +61,147 @@ class StringMatch(MethodProvider):
             config  CiscoConfParse object containing the configuration to
                     evaluate.
         '''
-        mandatory = rule.params.get('mandatory')
-        objs = config.find_objects(rule.selection)
 
-        evaluation = []
+        self.mandatory = rule.params.get('mandatory')
+        self.permitted = rule.params.get('permitted')
+        self.forbidden = rule.params.get('forbidden')
+        self.only = rule.params.get('only')
+        self.evaluation = []
+        self.rule = rule
+        self.config = config
 
+        if self.mandatory:
+            self.eval_mandatory()
+        if self.permitted:
+            self.eval_permitted()
+        if self.forbidden:
+            self.eval_forbidden()
+        if self.only:
+            self.eval_only()
+
+        self.cleanup()
+
+
+        return self.evaluation
+
+    def eval_mandatory(self):
+        '''
+        Evaluate param *mandatory* and append EvalResult objects when
+        matching. Delete all matching lines from config object.
+        '''
+
+        objs = self.config.find_objects(self.rule.selection)
         for obj in objs:
             if obj.children:
-                for i in mandatory:
-                    match = obj.re_search_children(i)
+                for i in self.mandatory:
+                    match = obj.delete_children_matching(i)
                     if match:
-                        evaluation.append(EvalResult(result=True, cfgline=obj,
-                                                     rule=i))
+                        self.evaluation.append(EvalResult(result=True, cfgline=[obj],
+                                                          rule=self.rule,
+                                                          param='mandatory',
+                                                          condition=i))
                     else:
-                        evaluation.append(EvalResult(result=False, cfgline=obj,
-                                                     rule=i))
+                        self.evaluation.append(EvalResult(result=False, cfgline=[obj],
+                                                          rule=self.rule,
+                                                          param='mandatory',
+                                                          condition=i))
             else:
-                for i in mandatory:
-                    match = obj.re_search(i, default=None)
+                for i in self.mandatory:
+                    match = obj.re_search(i)
                     if match:
-                        evaluation.append(EvalResult(result=True, cfgline=obj,
-                                                     rule=i))
+                        self.evaluation.append(EvalResult(result=True, cfgline=[obj],
+                                                          rule=self.rule,
+                                                          param='mandatory',
+                                                          condition=i))
+                        obj.delete()
                     else:
-                        evaluation.append(EvalResult(result=False,
-                                                     cfgline=obj, rule=i))
-        return evaluation
+                        self.evaluation.append(EvalResult(result=False,
+                                                          cfgline=[obj], rule=self.rule,
+                                                          param='mandatory',
+                                                          condition=i))
+        self.config.commit()
 
+    def eval_permitted(self):
+        '''
+        Evaluate param *permitted* and append EvalResult objects when
+        matching. Delete all matching lines from config object.
+        '''
+
+        objs = self.config.find_objects(self.rule.selection)
+        for obj in objs:
+            if obj.children:
+                for i in self.permitted:
+                    match = obj.delete_children_matching(i)
+                    if match:
+                        self.evaluation.append(EvalResult(result=True, cfgline=[obj],
+                                                          rule=self.rule,
+                                                          param='permitted',
+                                                          condition=i))
+            else:
+                for i in self.permitted:
+                    match = obj.re_search(i)
+                    if match:
+                        self.evaluation.append(EvalResult(result=True, cfgline=[obj],
+                                                          rule=self.rule,
+                                                          param='permitted',
+                                                          condition=i))
+                        obj.delete()
+        self.config.commit()
+
+    def eval_forbidden(self):
+        '''
+        Evaluate param *forbidden* and append EvalResult objects when
+        matching. Delete all matching lines from config object.
+        '''
+
+        objs = self.config.find_objects(self.rule.selection)
+        for obj in objs:
+            if obj.children:
+                for i in self.forbidden:
+                    match = obj.delete_children_matching(i)
+                    if match:
+                        self.evaluation.append(EvalResult(result=False, cfgline=[obj],
+                                                          rule=self.rule,
+                                                          param='forbidden',
+                                                          condition=i))
+            else:
+                for i in self.forbidden:
+                    match = obj.re_search(i)
+                    if match:
+                        self.evaluation.append(EvalResult(result=False, cfgline=[obj],
+                                                          rule=self.rule,
+                                                          param='forbidden',
+                                                          condition=i))
+                        obj.delete()
+        self.config.commit()
+
+    def eval_only(self):
+        '''
+        Evaluate param *only* and append EvalResult objects when
+        matching. This param will match all remaining config lines matched by
+        self.rule.selection and create an EvalResult object with them.
+        '''
+        objs = self.config.find_objects(self.rule.selection)
+        if len(objs) > 1:
+            for obj in objs:
+                if obj.children:
+                    self.evaluation.append(EvalResult(result=False,
+                                                      cfgline=obj.children,
+                                                      rule=self.rule,
+                                                      param='only',
+                                                      condition=''))
+
+    def cleanup(self):
+        '''
+        When all evaluation has been done, find all objects matching
+        self.rule.selection that are still in config but without any children
+        and delete them. This is done to avoid e.g. having an interface being
+        evaluated repeatedly when all its config lines have already been
+        verified.
+        '''
+
+        objs = self.config.find_objects(self.rule.selection)
+        for obj in objs:
+            if not obj.children:
+                obj.delete()
+        self.config.commit()

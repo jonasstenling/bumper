@@ -1,23 +1,38 @@
 ---
-config_files: router1, router2
 ruleset:
-    - name: verify that all static routes have a description
-      selection: ip route .*
+    - name: Port-channel34
+      selection: ^interface Port-channel34$
       method: string_match
       params:
-        mandatory:
-        - .*name
-    - name: verify that all interfaces have a description 
-      selection: ^interface.*
+        forbidden:
+        - no ip address
+        only: True
+    - name: Port-channel.*
+      selection: ^interface Port-channel.*
       method: string_match
       params:
         mandatory:
         - description
+        - encapsulation dot1Q  
+        - standby version 2
+        - standby 0 ip
+        - standby 0 follow master-bfd  
+        - ip address
+        permitted:
+        - vrf forwarding (service|global)
+        forbidden:  
         - no ip proxy-arp
-        - no ip unreachables
-    - name: verify that all bgp vrf configs has redistribute static
-      selection: address-family ipv4 vrf
+        only: True
+    - name: verify standard interface configuration
+      selection: ^interface Port-channel.*
       method: string_match
       params:
         mandatory:
-        - redistribute static
+        - description
+        - ip address
+        permitted:
+        - carrier-delay
+        - isis
+        forbidden:  
+        - no ip proxy-arp
+        only: True
