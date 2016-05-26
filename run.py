@@ -15,6 +15,7 @@ def main():
     config = load_config('test.conf')
     myrules = RuleSet()
     myrules.load_rules('main.yml')
+    myrules.verify_rules()
     myresult = []
 
     for rule in myrules.rules:

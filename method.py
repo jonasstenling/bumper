@@ -4,6 +4,21 @@ the input YAML file.
 '''
 from eval import EvalResult
 
+class RuleParamError(Exception):
+    def __init__(self, key, value):
+        self.key = key
+        self.value = value
+
+    def __str__(self):
+        return "Param '{}' has invalid value '{}'".format(self.key, self.value)
+
+class RuleParamUnsupported(Exception):
+    def __init__(self, keys):
+        self.keys = keys
+
+    def __str__(self):
+        return "{}".format(self.keys)
+
 class PluginMount(type):
     '''
     Metaclass used by MethodProvider to create plugin architecture.
@@ -21,11 +36,11 @@ class PluginMount(type):
             # track of it later.
             cls.plugins.append(cls)
 
-    def get_plugin(cls, method, *args, **kwargs):
+    def get_plugin(cls, rule, *args, **kwargs):
         '''Fetches plugin for *method* and returns the result.'''
         for plugin in cls.plugins:
-            if plugin.method_name == method:
-                return plugin(*args, **kwargs)
+            if plugin.method_name == rule.method:
+                return plugin(rule, *args, **kwargs)
 
 class MethodProvider:
     '''
@@ -42,17 +57,44 @@ class StringMatch(MethodProvider):
 
     method_name = 'string_match'
 
-    def __init__(self):
+    def __init__(self, rule):
         MethodProvider.__init__(self)
-        self.mandatory = None
-        self.permitted = None
-        self.forbidden = None
-        self.only = None
+        self.mandatory = rule.params.get('mandatory')
+        self.permitted = rule.params.get('permitted')
+        self.forbidden = rule.params.get('forbidden')
+        self.only = rule.params.get('only')
+        self.rule = rule
         self.evaluation = []
-        self.rule = None
-        self.config = None
+        self.verified = False
 
-    def __call__(self, rule, config):
+    def verify(self):
+        '''Verify that supported rule keys have the correct value'''
+
+        params = self.rule.params.copy()
+
+        for key, value in self.rule.params.iteritems():
+            if key in ('mandatory',
+                       'permitted',
+                       'forbidden'):
+                if isinstance(value, list):
+                    for i in value:
+                        if not isinstance(i, str):
+                            raise RuleParamError(key, i)
+                    params.pop(key)
+                else:
+                    raise RuleParamError(key, value)
+            elif key in 'only':
+                if isinstance(value, bool):
+                    params.pop(key)
+                else:
+                    raise RuleParamError(key, value)
+        # Any key still in *params* is not supported.
+        if params.keys():
+            raise RuleParamUnsupported(params.keys())
+
+        self.verified = True
+
+    def apply(self, config):
         '''
         Returns: List of EvalResult objects.
 
@@ -62,35 +104,32 @@ class StringMatch(MethodProvider):
                     evaluate.
         '''
 
-        self.mandatory = rule.params.get('mandatory')
-        self.permitted = rule.params.get('permitted')
-        self.forbidden = rule.params.get('forbidden')
-        self.only = rule.params.get('only')
-        self.evaluation = []
-        self.rule = rule
-        self.config = config
+        # If self.verify() has not been called, do it now to verify that
+        # input parameters are valid.
+        if self.verified == False:
+            self.verify()
 
+        # Evaluate for each supported input parameter.
         if self.mandatory:
-            self.eval_mandatory()
+            self.eval_mandatory(config)
         if self.permitted:
-            self.eval_permitted()
+            self.eval_permitted(config)
         if self.forbidden:
-            self.eval_forbidden()
+            self.eval_forbidden(config)
         if self.only:
-            self.eval_only()
+            self.eval_only(config)
 
-        self.cleanup()
-
+        self.cleanup(config)
 
         return self.evaluation
 
-    def eval_mandatory(self):
+    def eval_mandatory(self, config):
         '''
         Evaluate param *mandatory* and append EvalResult objects when
         matching. Delete all matching lines from config object.
         '''
 
-        objs = self.config.find_objects(self.rule.selection)
+        objs = config.find_objects(self.rule.selection)
         for obj in objs:
             if obj.children:
                 for i in self.mandatory:
@@ -119,15 +158,15 @@ class StringMatch(MethodProvider):
                                                           cfgline=[obj], rule=self.rule,
                                                           param='mandatory',
                                                           condition=i))
-        self.config.commit()
+        config.commit()
 
-    def eval_permitted(self):
+    def eval_permitted(self, config):
         '''
         Evaluate param *permitted* and append EvalResult objects when
         matching. Delete all matching lines from config object.
         '''
 
-        objs = self.config.find_objects(self.rule.selection)
+        objs = config.find_objects(self.rule.selection)
         for obj in objs:
             if obj.children:
                 for i in self.permitted:
@@ -146,15 +185,15 @@ class StringMatch(MethodProvider):
                                                           param='permitted',
                                                           condition=i))
                         obj.delete()
-        self.config.commit()
+        config.commit()
 
-    def eval_forbidden(self):
+    def eval_forbidden(self, config):
         '''
         Evaluate param *forbidden* and append EvalResult objects when
         matching. Delete all matching lines from config object.
         '''
 
-        objs = self.config.find_objects(self.rule.selection)
+        objs = config.find_objects(self.rule.selection)
         for obj in objs:
             if obj.children:
                 for i in self.forbidden:
@@ -173,15 +212,15 @@ class StringMatch(MethodProvider):
                                                           param='forbidden',
                                                           condition=i))
                         obj.delete()
-        self.config.commit()
+        config.commit()
 
-    def eval_only(self):
+    def eval_only(self, config):
         '''
         Evaluate param *only* and append EvalResult objects when
         matching. This param will match all remaining config lines matched by
         self.rule.selection and create an EvalResult object with them.
         '''
-        objs = self.config.find_objects(self.rule.selection)
+        objs = config.find_objects(self.rule.selection)
         if len(objs) > 1:
             for obj in objs:
                 if obj.children:
@@ -191,7 +230,7 @@ class StringMatch(MethodProvider):
                                                       param='only',
                                                       condition=''))
 
-    def cleanup(self):
+    def cleanup(self, config):
         '''
         When all evaluation has been done, find all objects matching
         self.rule.selection that are still in config but without any children
@@ -199,9 +238,8 @@ class StringMatch(MethodProvider):
         evaluated repeatedly when all its config lines have already been
         verified.
         '''
-
-        objs = self.config.find_objects(self.rule.selection)
+        objs = config.find_objects(self.rule.selection)
         for obj in objs:
             if not obj.children:
                 obj.delete()
-        self.config.commit()
+        config.commit()

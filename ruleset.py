@@ -21,8 +21,12 @@ class Rule:
             self.params)
 
     def apply(self, config):
-        plugin = MethodProvider.get_plugin(self.method)
-        return plugin(self, config)
+        plugin = MethodProvider.get_plugin(self)
+        return plugin.apply(config)
+
+    def verify(self):
+        plugin = MethodProvider.get_plugin(self)
+        return plugin.verify()
 
 class RuleSet:
     '''Support class to load YAML input file and create Rule objects.'''
@@ -43,6 +47,9 @@ class RuleSet:
                     if isinstance(rule, dict):
                         self.add_rule(rule)
 
+    def verify_rules(self):
+        for rule in self.rules:
+            rule.verify()
     def add_rule(self, rule):
         '''Append rule to RuleSet.'''
         self.rules.append(Rule(rule))
