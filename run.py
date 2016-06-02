@@ -14,7 +14,7 @@ def main():
 
     config = load_config('test.conf')
     myrules = RuleSet()
-    myrules.load_rules('main.yml')
+    myrules.load_rules('compare.yml')
     myrules.verify_rules()
     myresult = []
 

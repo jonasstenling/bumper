@@ -36,3 +36,9 @@ ruleset:
         forbidden:  
         - no ip proxy-arp
         only: True
+    - name: verify description in all vrf definition
+      selection: ^vrf definition
+      method: string_match
+      params:
+        mandatory:
+        - description
