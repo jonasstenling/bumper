@@ -1,45 +1,50 @@
+#!/usr/bin/env python
 '''
 This module is used to test the project implementation from the command
 line
 '''
 from ruleset import RuleSet
-from ciscoconfparse import CiscoConfParse
-
-def load_config(config_file):
-    '''Returns parse configuration as CiscoConfParse object.'''
-    return CiscoConfParse(config_file)
+import method_plugins
+import sys
+import os.path
 
 def main():
     '''Main entry point for module.'''
 
-    config = load_config('test.conf')
     myrules = RuleSet()
-    myrules.load_rules('compare.yml')
+    myrules.load_rules(sys.argv[1])
     myrules.verify_rules()
     myresult = []
 
     for rule in myrules.rules:
-        result = rule.apply(config)
-        print "*" * 80
-        print "*" * 80
-        print "*" * 80
-        print "Evaluation result for rule '{}':".format(rule.name)
+        result = rule.apply()
+        print ">>> Evaluating rule '{}'...".format(rule.name)
         for element in result:
-            if element.result == False:
+            if element.result == 'fail':
+                print "Rule '{}':".format(rule.name)
+                print " Result '{}':".format(element.result)
                 print " Method: {}".format(element.rule.method)
-                print " Param: {}".format(element.param)
+                print " Config: {}".format(element.config)
+                if element.param is not None: print " Param: {}".format(element.param)
+                if element.cfgline:
+                    cfglines = []
+                    parent = None
+                    for i in element.cfgline:
+                        cfglines.append(i.text)
+                        if i.parent != i:
+                            parent = i.parent.text
+                    if parent:
+                        print " Missing in subconfiguration:"
+                        print "  {}".format(parent)
+                        for i in cfglines:
+                            print "   {}".format(i)
+                    else:
+                        for i in cfglines:
+                            print " Missing in subconfiguration:"
+                            print "   {}".format(i)
                 print " Condition: {}".format(element.condition)
-                cfglines = []
-                parent = None
-                for i in element.cfgline:
-                    cfglines.append(i.text)
-                    if i.parent != i:
-                        parent = i.parent.text
-                if parent:
-                    print " {}".format(parent)
-                for i in cfglines:
-                    print "  {}".format(i)
-                print "*" * 80
+                print " Msg: {}".format(element.msg)
+                print " +++"
         myresult.append(result)
         print " *** End of evaluation result ***"
     return myresult

@@ -1,9 +1,0 @@
----
-ruleset:
-    - name: GigabitEthernet0
-      selection: ^interface GigabitEthernet0$
-      method: string_match
-      params:
-        forbidden:
-        - shutdown
-        only: True
